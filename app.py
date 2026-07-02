@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import os
-from flask import Flask
+import signal
+import sys
 from threading import Thread
+from flask import Flask
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -16,11 +18,12 @@ from keyboards import *
 
 logging.basicConfig(level=logging.INFO)
 
+# ========== ИНИЦИАЛИЗАЦИЯ ==========
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 
-# ========== ВЕБ-СЕРВЕР ДЛЯ RENDER ==========
+# ========== Flask ДЛЯ RENDER ==========
 app = Flask(__name__)
 
 @app.route('/')
@@ -31,12 +34,7 @@ def home():
 def health():
     return "OK", 200
 
-def run_bot():
-    asyncio.run(dp.start_polling(bot))
-
-# ========== ВСЕ КОМАНДЫ БОТА ==========
-
-# Корзина (хранилище)
+# ========== ВСЕ ХЕНДЛЕРЫ БОТА ==========
 cart = {}
 
 @dp.message(Command("start"))
@@ -245,10 +243,24 @@ async def cancel_order(callback: CallbackQuery):
     if order:
         await bot.send_message(order[1], "❌ Ваш заказ отменен продавцом")
 
-# ========== ЗАПУСК ==========
-if __name__ == "__main__":
+# ========== ЗАПУСК БОТА В ОСНОВНОМ ПОТОКЕ ==========
+async def main():
     init_db()
-    bot_thread = Thread(target=run_bot)
-    bot_thread.start()
+    print("🚀 Бот запущен и готов к работе!")
+    await dp.start_polling(bot)
+
+# ========== ЗАПУСК FLASK В ОТДЕЛЬНОМ ПОТОКЕ ==========
+def run_flask():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    # Запускаем Flask в фоне
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
+    
+    # Запускаем бота в основном потоке (теперь сигналы работают!)
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Бот остановлен")
